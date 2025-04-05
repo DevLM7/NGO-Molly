@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register New Volunteer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            margin: 20px auto;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #canvas {
+            display: none;
+        }
+        .guide-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .guide-text {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .profile-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 300px;
+            border: 2px dashed rgba(255, 255, 255, 0.8);
+            border-radius: 100px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        input[type="text"],
+        input[type="email"] {
+            width: 300px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .button {
+            padding: 12px 25px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            transition: background-color 0.3s;
+        }
+        .capture {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .capture:hover {
+            background-color: #45a049;
+        }
+        .retake {
+            background-color: #f44336;
+            color: white;
+            display: none;
+        }
+        .retake:hover {
+            background-color: #da190b;
+        }
+        .submit {
+            background-color: #2196F3;
+            color: white;
+            display: none;
+        }
+        .submit:hover {
+            background-color: #1e87dc;
+        }
+        .preview-container {
+            display: none;
+            margin: 20px 0;
+        }
+        #preview {
+            max-width: 320px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Register New Volunteer</h1>
+        <div class="form-group">
+            <input type="text" id="volunteer_id" placeholder="Volunteer ID" required>
+        </div>
+        <div class="form-group">
+            <input type="text" id="name" placeholder="Full Name" required>
+        </div>
+        <div class="form-group">
+            <input type="email" id="email" placeholder="Email" required>
+        </div>
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="guide-overlay">
+                <div class="profile-guide"></div>
+                <div class="guide-text">
+                    Please turn your head to the right to show your profile
+                </div>
+            </div>
+        </div>
+        <div class="preview-container">
+            <img id="preview">
+        </div>
+        <div>
+            <button class="button capture" id="capture">Capture Profile</button>
+            <button class="button retake" id="retake">Retake</button>
+            <button class="button submit" id="submit">Register</button>
+        </div>
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        let stream;
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const preview = document.getElementById('preview');
+        const captureBtn = document.getElementById('capture');
+        const retakeBtn = document.getElementById('retake');
+        const submitBtn = document.getElementById('submit');
+        const previewContainer = document.querySelector('.preview-container');
+        const videoContainer = document.querySelector('.video-container');
+        const status = document.getElementById('status');
+
+        // Start webcam
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: 640,
+                        height: 480,
+                        facingMode: "user"
+                    } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error('Error accessing webcam:', err);
+                status.textContent = 'Error accessing webcam. Please make sure your camera is connected and you have granted permission.';
+                status.className = 'status error';
+                status.style.display = 'block';
+            }
+        }
+
+        // Capture photo
+        captureBtn.addEventListener('click', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            preview.src = canvas.toDataURL('image/jpeg');
+            previewContainer.style.display = 'block';
+            videoContainer.style.display = 'none';
+            captureBtn.style.display = 'none';
+            retakeBtn.style.display = 'inline-block';
+            submitBtn.style.display = 'inline-block';
+        });
+
+        // Retake photo
+        retakeBtn.addEventListener('click', () => {
+            previewContainer.style.display = 'none';
+            videoContainer.style.display = 'block';
+            captureBtn.style.display = 'inline-block';
+            retakeBtn.style.display = 'none';
+            submitBtn.style.display = 'none';
+            status.style.display = 'none';
+        });
+
+        // Submit registration
+        submitBtn.addEventListener('click', async () => {
+            const volunteer_id = document.getElementById('volunteer_id').value;
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+
+            if (!volunteer_id || !name || !email) {
+                status.textContent = 'Please fill in all fields';
+                status.className = 'status error';
+                status.style.display = 'block';
+                return;
+            }
+
+            // Convert canvas to blob
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image', blob, 'profile.jpg');
+                formData.append('volunteer_id', volunteer_id);
+                formData.append('name', name);
+                formData.append('email', email);
+
+                try {
+                    const response = await fetch('/register_face', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        status.textContent = 'Registration successful!';
+                        status.className = 'status success';
+                        // Redirect to home page after 2 seconds
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    } else {
+                        status.textContent = result.error || 'Registration failed';
+                        status.className = 'status error';
+                    }
+                } catch (err) {
+                    console.error('Error:', err);
+                    status.textContent = 'Error submitting registration';
+                    status.className = 'status error';
+                }
+                status.style.display = 'block';
+            }, 'image/jpeg', 0.9);
+        });
+
+        // Start camera when page loads
+        startCamera();
+
+        // Clean up when page is closed
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html> 
