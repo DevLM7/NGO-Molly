@@ -1,9 +1,29 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.js';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { FiArrowLeft, FiHome } from 'react-icons/fi';
 
 const AccessDenied = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Get the required roles from the location state
+  const requiredRoles = location.state?.requiredRoles || [];
+  
+  // Get the dashboard path based on user role
+  const getDashboardPath = () => {
+    if (!user) return '/login';
+    
+    // Check if user is an NGO (any type)
+    const ngoRoles = ['ngo_admin', 'ngo', 'organization', 'organization_admin'];
+    if (ngoRoles.includes(user.role)) {
+      return '/ngo/dashboard';
+    }
+    
+    // Default to volunteer dashboard
+    return '/volunteer/dashboard';
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -31,7 +51,12 @@ const AccessDenied = () => {
                 <div className="mt-2 text-sm text-red-700">
                   <p>
                     {user ? (
-                      <>You are logged in as <span className="font-medium">{user.name}</span> with role <span className="font-medium">{user.role}</span>. You need a different role to access this page.</>
+                      <>
+                        You are logged in as <span className="font-medium">{user.name}</span> with role <span className="font-medium">{user.role}</span>.
+                        {requiredRoles.length > 0 && (
+                          <> This page requires one of the following roles: <span className="font-medium">{requiredRoles.join(', ')}</span>.</>
+                        )}
+                      </>
                     ) : (
                       'You need to be logged in to access this page.'
                     )}
@@ -40,17 +65,22 @@ const AccessDenied = () => {
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              <Link to="/" className="font-medium text-indigo-600 hover:text-indigo-500">
-                Go back home
-              </Link>
-            </div>
-            <div className="text-sm">
-              <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-                Login with a different account
-              </Link>
-            </div>
+          
+          <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 justify-center">
+            <button
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <FiArrowLeft className="mr-2 -ml-1 h-5 w-5" />
+              Go Back
+            </button>
+            <Link
+              to={getDashboardPath()}
+              className="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <FiHome className="mr-2 -ml-1 h-5 w-5" />
+              Go to Dashboard
+            </Link>
           </div>
         </div>
       </div>

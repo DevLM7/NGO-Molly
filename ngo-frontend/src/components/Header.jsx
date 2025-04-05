@@ -19,12 +19,28 @@ const Header = () => {
 
   const getDashboardPath = () => {
     if (!user) return '/auth';
-    return user.role === 'ngo_admin' ? '/ngo/dashboard' : '/volunteer/dashboard';
+    
+    // Check if user is an NGO (any type)
+    const ngoRoles = ['ngo_admin', 'ngo', 'organization', 'organization_admin'];
+    if (ngoRoles.includes(user.role)) {
+      return '/ngo/dashboard';
+    }
+    
+    // Default to volunteer dashboard
+    return '/volunteer/dashboard';
   };
 
   const getProfilePath = () => {
     if (!user) return '/auth';
-    return user.role === 'ngo_admin' ? '/ngo/profile' : '/volunteer/profile';
+    
+    // Check if user is an NGO (any type)
+    const ngoRoles = ['ngo_admin', 'ngo', 'organization', 'organization_admin'];
+    if (ngoRoles.includes(user.role)) {
+      return '/ngo/profile';
+    }
+    
+    // Default to volunteer profile
+    return '/volunteer/profile';
   };
 
   const ngoLinks = [
@@ -38,6 +54,7 @@ const Header = () => {
   const volunteerLinks = [
     { path: '/volunteer/events', label: 'Events' },
     { path: '/volunteer/badges', label: 'Badges' },
+    { path: '/volunteer/ngos', label: 'NGOs' },
     { path: '/gallery', label: 'Gallery' }
   ];
 

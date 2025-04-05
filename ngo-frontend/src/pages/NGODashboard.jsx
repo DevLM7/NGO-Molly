@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.js';
 import { eventAPI, reportAPI } from '../services/api';
 import { toast } from 'react-toastify';
-import { FiCalendar, FiUsers, FiFileText, FiBox, FiBarChart2, FiImage, FiSettings } from 'react-icons/fi';
+import { FiCalendar, FiUsers, FiFileText, FiBox, FiBarChart2, FiImage, FiSettings, FiUser, FiAward, FiX } from 'react-icons/fi';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 const NGODashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -16,10 +19,15 @@ const NGODashboard = () => {
     completedEvents: 0,
     upcomingEvents: 0
   });
+  const [connectedVolunteers, setConnectedVolunteers] = useState([]);
+  const [selectedVolunteer, setSelectedVolunteer] = useState(null);
 
-  // Fetch NGO stats
+  // Get NGO ID from URL or use current user's ID
+  const ngoId = new URLSearchParams(location.search).get('id') || user.uid;
+
+  // Fetch NGO stats and connected volunteers
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         
@@ -36,24 +44,46 @@ const NGODashboard = () => {
         const totalEvents = events.length;
         const completedEvents = events.filter(event => new Date(event.date) < now).length;
         const upcomingEvents = events.filter(event => new Date(event.date) >= now).length;
-        const activeVolunteers = reportStats.active_volunteers || 0;
+        
+        // Get connected volunteers
+        const volunteersQuery = query(
+          collection(db, 'users'),
+          where('connectedNGOs', 'array-contains', ngoId)
+        );
+        const volunteersSnap = await getDocs(volunteersQuery);
+        const volunteers = [];
+        
+        volunteersSnap.forEach(doc => {
+          const data = doc.data();
+          volunteers.push({
+            id: doc.id,
+            name: data.name,
+            email: data.email,
+            skills: data.skills || [],
+            interests: data.interests || [],
+            totalHours: data.totalHours || 0,
+            profileImage: data.profileImage
+          });
+        });
+        
+        setConnectedVolunteers(volunteers);
         
         setStats({
           totalEvents,
-          activeVolunteers,
+          activeVolunteers: volunteers.length,
           completedEvents,
           upcomingEvents
         });
       } catch (error) {
-        console.error('Error fetching NGO stats:', error);
-        toast.error('Failed to load dashboard statistics');
+        console.error('Error fetching NGO data:', error);
+        toast.error('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchStats();
-  }, [user.uid]);
+    fetchData();
+  }, [ngoId]);
 
   const quickActions = [
     {
@@ -114,7 +144,7 @@ const NGODashboard = () => {
       <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { title: 'Total Events', value: stats.totalEvents, color: 'bg-blue-500' },
-          { title: 'Active Volunteers', value: stats.activeVolunteers, color: 'bg-green-500' },
+          { title: 'Connected Volunteers', value: stats.activeVolunteers, color: 'bg-green-500' },
           { title: 'Completed Events', value: stats.completedEvents, color: 'bg-purple-500' },
           { title: 'Upcoming Events', value: stats.upcomingEvents, color: 'bg-orange-500' }
         ].map((stat, index) => (
@@ -143,44 +173,148 @@ const NGODashboard = () => {
       </div>
 
       {/* Quick Actions */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-      >
-        <h2 className="text-2xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {quickActions.map((action, index) => (
-            <motion.div
-              key={action.title}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: index * 0.1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <button
-                onClick={() => navigate(action.path)}
-                className="w-full h-full relative group overflow-hidden rounded-xl bg-white shadow-md hover:shadow-xl transition-all duration-300"
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {quickActions.map((action, index) => (
+          <motion.div
+            key={action.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+            className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => navigate(action.path)}
+          >
+            <div className={`bg-gradient-to-r ${action.color} p-4`}>
+              <div className="text-white">{action.icon}</div>
+            </div>
+            <div className="p-4">
+              <h3 className="text-lg font-medium text-gray-900">{action.title}</h3>
+              <p className="text-sm text-gray-500">{action.description}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Connected Volunteers Section */}
+      <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Connected Volunteers</h2>
+        
+        {loading ? (
+          <div className="flex justify-center items-center h-32">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : connectedVolunteers.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {connectedVolunteers.map(volunteer => (
+              <div 
+                key={volunteer.id} 
+                className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => setSelectedVolunteer(volunteer)}
               >
-                <div className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
-                <div className="relative p-6 flex flex-col items-center text-center">
-                  <span className="mb-4 transform transition-transform duration-300 group-hover:scale-110 text-gray-700 group-hover:text-indigo-600">
-                    {action.icon}
-                  </span>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-indigo-600 transition-colors duration-300">
-                    {action.title}
-                  </h3>
-                  <p className="text-sm text-gray-500 group-hover:text-gray-600 transition-colors duration-300">
-                    {action.description}
-                  </p>
-                  <div className={`absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r ${action.color} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left`} />
+                <div className="flex items-center mb-3">
+                  {volunteer.profileImage ? (
+                    <img 
+                      src={volunteer.profileImage} 
+                      alt={volunteer.name} 
+                      className="w-10 h-10 rounded-full mr-3"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center mr-3">
+                      <FiUser className="w-5 h-5 text-gray-500" />
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="font-medium text-gray-900">{volunteer.name}</h3>
+                    <p className="text-sm text-gray-500">{volunteer.email}</p>
+                  </div>
                 </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center text-sm text-gray-600">
+                    <FiAward className="w-4 h-4 mr-2" />
+                    <span>{volunteer.totalHours} hours volunteered</span>
+                  </div>
+                  
+                  {volunteer.skills && volunteer.skills.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {volunteer.skills.map(skill => (
+                        <span key={skill} className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-600 text-center py-4">No connected volunteers yet</p>
+        )}
+      </div>
+
+      {/* Volunteer Details Modal */}
+      {selectedVolunteer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-semibold text-gray-900">{selectedVolunteer.name}</h2>
+              <button 
+                onClick={() => setSelectedVolunteer(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <FiX className="w-6 h-6" />
               </button>
-            </motion.div>
-          ))}
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium text-gray-500">Contact Information</h3>
+                <p className="text-gray-900">{selectedVolunteer.email}</p>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium text-gray-500">Volunteer Hours</h3>
+                <p className="text-gray-900">{selectedVolunteer.totalHours} hours</p>
+              </div>
+              
+              {selectedVolunteer.skills && selectedVolunteer.skills.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Skills</h3>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {selectedVolunteer.skills.map(skill => (
+                      <span key={skill} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {selectedVolunteer.interests && selectedVolunteer.interests.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Interests</h3>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {selectedVolunteer.interests.map(interest => (
+                      <span key={interest} className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                        {interest}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setSelectedVolunteer(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
-      </motion.div>
+      )}
     </div>
   );
 };

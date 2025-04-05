@@ -8,7 +8,7 @@ class User(BaseModel):
     def __init__(self, id=None, email=None, name=None, role=None, 
                  phone=None, address=None, profile_image=None, 
                  skills=None, interests=None, availability=None, 
-                 created_at=None, updated_at=None):
+                 created_at=None, updated_at=None, bio=None, face_descriptor=None):
         super().__init__(id, created_at, updated_at)
         self.email = email
         self.name = name
@@ -19,6 +19,8 @@ class User(BaseModel):
         self.skills = skills or []
         self.interests = interests or []
         self.availability = availability or {}
+        self.bio = bio
+        self.face_descriptor = face_descriptor
 
     @classmethod
     def create_user(cls, email, password, name, role):
@@ -71,17 +73,28 @@ class User(BaseModel):
         return this
 
     @staticmethod
-    def find_by_id(uid):
-        """Find a user by ID"""
-        user_ref = db.collection('users').document(uid)
-        user = user_ref.get()
-        
-        if not user.exists:
+    def find_by_id(user_id):
+        try:
+            doc = db.collection('users').document(user_id).get()
+            if doc.exists:
+                data = doc.to_dict()
+                return User(
+                    id=doc.id,
+                    name=data.get('name'),
+                    email=data.get('email'),
+                    role=data.get('role'),
+                    phone=data.get('phone'),
+                    address=data.get('address'),
+                    skills=data.get('skills', []),
+                    interests=data.get('interests', []),
+                    bio=data.get('bio'),
+                    profile_image=data.get('profileImage'),
+                    face_descriptor=data.get('faceDescriptor')
+                )
             return None
-            
-        user_data = user.to_dict()
-        user_data['uid'] = user.id
-        return User(**user_data)
+        except Exception as e:
+            print(f"Error finding user by ID: {str(e)}")
+            return None
 
     @staticmethod
     def find_by_email(email):
@@ -99,30 +112,35 @@ class User(BaseModel):
 
     def save(self):
         """Save or update user"""
-        user_data = {
-            'email': self.email,
-            'name': self.name,
-            'role': self.role,
-            'phone': self.phone,
-            'address': self.address,
-            'skills': self.skills,
-            'interests': self.interests,
-            'profile_image': self.profile_image,
-            'availability': self.availability,
-            'updated_at': datetime.now()
-        }
-        
-        if not self.id:
-            # Create new user
-            user_data['created_at'] = datetime.now()
-            user_ref = db.collection('users').document()
-            self.id = user_ref.id
-        else:
-            # Update existing user
-            user_ref = db.collection('users').document(self.id)
+        try:
+            data = {
+                'email': self.email,
+                'name': self.name,
+                'role': self.role,
+                'phone': self.phone,
+                'address': self.address,
+                'skills': self.skills,
+                'interests': self.interests,
+                'bio': self.bio,
+                'profileImage': self.profile_image,
+                'faceDescriptor': self.face_descriptor,
+                'updated_at': datetime.now().isoformat()
+            }
             
-        user_ref.set(user_data, merge=True)
-        return self
+            if not self.id:
+                # Create new user
+                data['created_at'] = self.created_at
+                user_ref = db.collection('users').document()
+                self.id = user_ref.id
+            else:
+                # Update existing user
+                user_ref = db.collection('users').document(self.id)
+            
+            user_ref.set(data, merge=True)
+            return True
+        except Exception as e:
+            print(f"Error saving user: {str(e)}")
+            return False
 
     def delete(self):
         """Delete user"""
@@ -148,7 +166,7 @@ class User(BaseModel):
     def to_dict(self):
         """Convert user to dictionary"""
         return {
-            'uid': self.uid,
+            'id': self.id,
             'email': self.email,
             'name': self.name,
             'role': self.role,
@@ -156,8 +174,33 @@ class User(BaseModel):
             'address': self.address,
             'skills': self.skills,
             'interests': self.interests,
-            'profile_image': self.profile_image,
             'bio': self.bio,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        } 
+            'profileImage': self.profile_image,
+            'createdAt': self.created_at,
+            'updatedAt': self.updated_at
+        }
+
+    @staticmethod
+    def find_all_with_face_descriptors():
+        try:
+            docs = db.collection('users').where('faceDescriptor', '!=', None).get()
+            users = []
+            for doc in docs:
+                data = doc.to_dict()
+                users.append(User(
+                    id=doc.id,
+                    name=data.get('name'),
+                    email=data.get('email'),
+                    role=data.get('role'),
+                    phone=data.get('phone'),
+                    address=data.get('address'),
+                    skills=data.get('skills', []),
+                    interests=data.get('interests', []),
+                    bio=data.get('bio'),
+                    profile_image=data.get('profileImage'),
+                    face_descriptor=data.get('faceDescriptor')
+                ))
+            return users
+        except Exception as e:
+            print(f"Error finding users with face descriptors: {str(e)}")
+            return [] 

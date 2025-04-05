@@ -1,13 +1,25 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../firebase/config';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   signOut, 
   onAuthStateChanged,
-  updateProfile as updateFirebaseProfile
+  updateProfile as updateFirebaseProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
+  sendPasswordResetEmail
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -38,7 +50,9 @@ export const AuthProvider = ({ children }) => {
           skills: userData?.skills || [],
           interests: userData?.interests || [],
           totalHours: userData?.totalHours || 0,
-          badges: userData?.badges || []
+          badges: userData?.badges || [],
+          profileImage: userData?.profileImage || null,
+          faceDescriptor: userData?.faceDescriptor || null
         });
       } else {
         setUser(null);
@@ -91,25 +105,50 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Get user data from Firestore
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       const userData = userDoc.data();
+      
+      if (!userData) {
+        throw new Error('User data not found');
+      }
       
       const user = {
         uid: userCredential.user.uid,
         email: userCredential.user.email,
-        role: userData?.role || 'volunteer',
-        name: userData?.name || userCredential.user.displayName,
-        skills: userData?.skills || [],
-        interests: userData?.interests || [],
-        totalHours: userData?.totalHours || 0,
-        badges: userData?.badges || []
+        role: userData.role || 'volunteer',
+        name: userData.name || userCredential.user.displayName,
+        skills: userData.skills || [],
+        interests: userData.interests || [],
+        totalHours: userData.totalHours || 0,
+        badges: userData.badges || [],
+        profileImage: userData.profileImage || null,
+        faceDescriptor: userData.faceDescriptor || null
       };
       
       setUser(user);
       return user;
     } catch (error) {
       console.error('Login error:', error);
-      throw error;
+      
+      // Handle specific Firebase auth errors
+      switch (error.code) {
+        case 'auth/too-many-requests':
+          throw new Error('Too many failed login attempts. Please try again later or reset your password.');
+        case 'auth/user-not-found':
+          throw new Error('No account found with this email address.');
+        case 'auth/wrong-password':
+          throw new Error('Incorrect password. Please try again.');
+        case 'auth/invalid-email':
+          throw new Error('Invalid email address format.');
+        case 'auth/user-disabled':
+          throw new Error('This account has been disabled. Please contact support.');
+        case 'auth/network-request-failed':
+          throw new Error('Network error. Please check your internet connection.');
+        default:
+          throw new Error('An error occurred during login. Please try again.');
+      }
     }
   };
 
@@ -125,39 +164,121 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (profileData) => {
     try {
-      if (!user) {
-        throw new Error('No user logged in');
-      }
-
-      // Update Firebase Auth profile if name is provided
-      if (profileData.name) {
-        await updateFirebaseProfile(auth.currentUser, {
-          displayName: profileData.name
-        });
-      }
-
-      // Update Firestore document
+      if (!user) throw new Error('No user logged in');
+      
+      // Get the current user document
       const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User document not found');
+      }
+      
+      // Prepare the data to update
+      const updateData = {
         name: profileData.name || user.name,
-        skills: profileData.skills || user.skills,
-        interests: profileData.interests || user.interests,
-        bio: profileData.bio || user.bio || '',
-        updatedAt: new Date()
-      });
-
-      // Update local user state
-      setUser({
-        ...user,
-        name: profileData.name || user.name,
-        skills: profileData.skills || user.skills,
-        interests: profileData.interests || user.interests,
-        bio: profileData.bio || user.bio || ''
-      });
-
+        bio: profileData.bio || user.bio,
+        skills: profileData.skills || user.skills || [],
+        interests: profileData.interests || user.interests || [],
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Only update profile image and face descriptor if they are provided
+      if (profileData.profileImage) {
+        updateData.profileImage = profileData.profileImage;
+      }
+      
+      if (profileData.faceDescriptor) {
+        updateData.faceDescriptor = profileData.faceDescriptor;
+      }
+      
+      // Update the user document
+      await updateDoc(userRef, updateData);
+      
+      // Update the local user state
+      setUser(prevUser => ({
+        ...prevUser,
+        ...updateData
+      }));
+      
+      // If the user is a volunteer, update their profile in the volunteers collection
+      if (user.role === 'volunteer') {
+        const volunteerRef = doc(db, 'volunteers', user.uid);
+        const volunteerDoc = await getDoc(volunteerRef);
+        
+        if (volunteerDoc.exists()) {
+          await updateDoc(volunteerRef, updateData);
+        } else {
+          // Create a new volunteer document if it doesn't exist
+          await setDoc(volunteerRef, {
+            ...updateData,
+            userId: user.uid,
+            email: user.email,
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
+      
       return true;
     } catch (error) {
-      console.error('Profile update error:', error);
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      // Check if user document exists
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      
+      if (!userDoc.exists()) {
+        // Create new user document if it doesn't exist
+        const userData = {
+          uid: result.user.uid,
+          name: result.user.displayName,
+          email: result.user.email,
+          role: 'volunteer', // Default role for Google sign-in
+          skills: [],
+          interests: [],
+          totalHours: 0,
+          badges: [],
+          createdAt: new Date()
+        };
+        
+        await setDoc(doc(db, 'users', result.user.uid), userData);
+        setUser(userData);
+      } else {
+        // Use existing user data
+        const userData = userDoc.data();
+        setUser({
+          uid: result.user.uid,
+          email: result.user.email,
+          role: userData.role,
+          name: userData.name,
+          skills: userData.skills || [],
+          interests: userData.interests || [],
+          totalHours: userData.totalHours || 0,
+          badges: userData.badges || [],
+          profileImage: userData.profileImage || null,
+          faceDescriptor: userData.faceDescriptor || null
+        });
+      }
+      
+      return result.user;
+    } catch (error) {
+      console.error('Google login error:', error);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error) {
+      console.error('Password reset error:', error);
       throw error;
     }
   };
@@ -168,7 +289,9 @@ export const AuthProvider = ({ children }) => {
     register,
     login,
     logout,
-    updateProfile
+    updateProfile,
+    loginWithGoogle,
+    resetPassword
   };
 
   return (

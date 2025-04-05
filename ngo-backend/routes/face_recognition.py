@@ -2,9 +2,13 @@ from flask import Blueprint, request, jsonify
 from utils.firebase import db, storage
 from middleware.auth import require_auth
 from app.controllers.face_recognition_controller import (
-    save_face_descriptor, match_face, mark_attendance
+    save_face_descriptor, match_face, mark_attendance, verify_face_descriptor
 )
+from app.models.attendance import Attendance
+from app.models.event import Event
+from app.models.user import User
 import base64
+import numpy as np
 
 face_recognition_bp = Blueprint('face_recognition', __name__)
 
@@ -57,4 +61,80 @@ def mark_face_attendance():
         attendance = mark_attendance(user_id, event_id)
         return jsonify(attendance), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500
+
+@face_recognition_bp.route('/verify', methods=['POST'])
+@require_auth
+def verify_attendance():
+    try:
+        data = request.get_json()
+        event_id = data.get('eventId')
+        face_descriptor = data.get('faceDescriptor')
+        
+        if not event_id or not face_descriptor:
+            return jsonify({
+                'success': False,
+                'message': 'Missing required fields'
+            }), 400
+            
+        # Get the event
+        event = Event.find_by_id(event_id)
+        if not event:
+            return jsonify({
+                'success': False,
+                'message': 'Event not found'
+            }), 404
+            
+        # Get the user
+        user = User.find_by_id(request.user_id)
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+            
+        # Check if user is registered for the event
+        if not event.is_registered(user.id):
+            return jsonify({
+                'success': False,
+                'message': 'You are not registered for this event'
+            }), 400
+            
+        # Check if attendance already marked
+        existing_attendance = Attendance.find_by_event_and_volunteer(event_id, user.id)
+        if existing_attendance:
+            return jsonify({
+                'success': False,
+                'message': 'Attendance already marked for this event'
+            }), 400
+            
+        # Verify face descriptor
+        match_found = verify_face_descriptor(user.face_descriptor, face_descriptor)
+        
+        if not match_found:
+            return jsonify({
+                'success': False,
+                'message': 'Face verification failed. Please try again.'
+            }), 400
+            
+        # Create attendance record
+        attendance = Attendance(
+            event_id=event_id,
+            volunteer_id=user.id,
+            status='attended',
+            verification_method='face_recognition'
+        )
+        attendance.save()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Attendance marked successfully',
+            'attendance': attendance.to_dict()
+        })
+        
+    except Exception as e:
+        print(f"Error in face recognition verification: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred while verifying attendance'
+        }), 500 

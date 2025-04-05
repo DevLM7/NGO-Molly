@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.js';
 import { toast } from 'react-toastify';
+import { FiUpload } from 'react-icons/fi';
 
 const Profile = () => {
   const { user, updateProfile } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     skills: [],
     interests: [],
-    bio: ''
+    bio: '',
+    profileImage: null
   });
+  
+  const fileInputRef = useRef();
 
   useEffect(() => {
     if (user) {
@@ -18,8 +22,10 @@ const Profile = () => {
         name: user.name || '',
         skills: user.skills || [],
         interests: user.interests || [],
-        bio: user.bio || ''
+        bio: user.bio || '',
+        profileImage: user.profileImage || null
       });
+      setLoading(false);
     }
   }, [user]);
 
@@ -43,135 +49,134 @@ const Profile = () => {
       setLoading(false);
     }
   };
-
-  if (!user) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-      </div>
-    );
-  }
+  
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData(prev => ({
+          ...prev,
+          profileImage: event.target.result
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        {/* Profile Header */}
-        <div className="bg-indigo-600 px-6 py-8 text-white">
-          <div className="flex items-center">
-            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-indigo-600 text-3xl font-bold">
-              {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="px-4 py-6 sm:px-0">
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <div className="flex items-center space-x-6">
+              <div className="flex-shrink-0 h-24 w-24 bg-gray-200 rounded-full overflow-hidden">
+                {formData.profileImage ? (
+                  <img
+                    src={formData.profileImage}
+                    alt="Profile"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-gray-400">
+                    <FiUpload size={24} />
+                  </div>
+                )}
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Upload Photo
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+              </div>
             </div>
-            <div className="ml-6">
-              <h1 className="text-3xl font-bold">{user.name || 'User'}</h1>
-              <p className="text-indigo-100">{user.email}</p>
-              <p className="text-indigo-200 mt-1 capitalize">{user.role || 'Volunteer'}</p>
-            </div>
+
+            <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  id="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="bio" className="block text-sm font-medium text-gray-700">
+                  Bio
+                </label>
+                <textarea
+                  id="bio"
+                  name="bio"
+                  rows={4}
+                  value={formData.bio}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="skills" className="block text-sm font-medium text-gray-700">
+                  Skills (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  name="skills"
+                  id="skills"
+                  value={formData.skills.join(', ')}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)
+                  }))}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="interests" className="block text-sm font-medium text-gray-700">
+                  Interests (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  name="interests"
+                  id="interests"
+                  value={formData.interests.join(', ')}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    interests: e.target.value.split(',').map(interest => interest.trim()).filter(Boolean)
+                  }))}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                    loading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
-        </div>
-
-        {/* Profile Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 bg-gray-50 border-b">
-          <div className="bg-white p-4 rounded-lg shadow text-center">
-            <p className="text-gray-500 text-sm">Total Hours</p>
-            <p className="text-2xl font-bold text-indigo-600">{user.totalHours || 0}</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow text-center">
-            <p className="text-gray-500 text-sm">Badges Earned</p>
-            <p className="text-2xl font-bold text-indigo-600">{user.badges?.length || 0}</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow text-center">
-            <p className="text-gray-500 text-sm">Skills</p>
-            <p className="text-2xl font-bold text-indigo-600">{user.skills?.length || 0}</p>
-          </div>
-        </div>
-
-        {/* Profile Edit Form */}
-        <div className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Edit Profile</h2>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Full Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="bio" className="block text-sm font-medium text-gray-700">
-                Bio
-              </label>
-              <textarea
-                id="bio"
-                name="bio"
-                rows={4}
-                value={formData.bio}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                placeholder="Tell us about yourself..."
-              />
-            </div>
-
-            <div>
-              <label htmlFor="skills" className="block text-sm font-medium text-gray-700">
-                Skills (comma-separated)
-              </label>
-              <input
-                type="text"
-                id="skills"
-                name="skills"
-                value={formData.skills.join(', ')}
-                onChange={(e) => setFormData(prev => ({
-                  ...prev,
-                  skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)
-                }))}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                placeholder="e.g. Teaching, Web Development, Event Planning"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="interests" className="block text-sm font-medium text-gray-700">
-                Interests (comma-separated)
-              </label>
-              <input
-                type="text"
-                id="interests"
-                name="interests"
-                value={formData.interests.join(', ')}
-                onChange={(e) => setFormData(prev => ({
-                  ...prev,
-                  interests: e.target.value.split(',').map(interest => interest.trim()).filter(Boolean)
-                }))}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                placeholder="e.g. Education, Environment, Healthcare"
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                {loading ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </>
-                ) : 'Save Changes'}
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     </div>

@@ -1,12 +1,13 @@
 from app.models.base import BaseModel
 from datetime import datetime
+from app.utils.db import db
 
 class Attendance(BaseModel):
     collection_name = 'attendance'
 
     def __init__(self, id=None, event_id=None, volunteer_id=None, 
                  check_in=None, check_out=None, status=None, 
-                 hours_worked=None, notes=None, created_at=None, updated_at=None):
+                 hours_worked=None, notes=None, created_at=None, updated_at=None, verification_method=None):
         super().__init__(id, created_at, updated_at)
         self.event_id = event_id
         self.volunteer_id = volunteer_id
@@ -15,6 +16,7 @@ class Attendance(BaseModel):
         self.status = status or 'present'
         self.hours_worked = hours_worked
         self.notes = notes
+        self.verification_method = verification_method
 
     @classmethod
     def find_by_event(cls, event_id):
@@ -44,28 +46,33 @@ class Attendance(BaseModel):
 
     def save(self):
         """Save or update attendance record"""
-        attendance_data = {
-            'event_id': self.event_id,
-            'volunteer_id': self.volunteer_id,
-            'check_in': self.check_in,
-            'check_out': self.check_out,
-            'status': self.status,
-            'hours_worked': self.hours_worked,
-            'notes': self.notes,
-            'updated_at': datetime.now()
-        }
-        
-        if not self.id:
-            # Create new attendance record
-            attendance_data['created_at'] = datetime.now()
-            attendance_ref = db.collection('attendance').document()
-            self.id = attendance_ref.id
-        else:
-            # Update existing attendance record
-            attendance_ref = db.collection('attendance').document(self.id)
+        try:
+            attendance_data = {
+                'event_id': self.event_id,
+                'volunteer_id': self.volunteer_id,
+                'check_in': self.check_in,
+                'check_out': self.check_out,
+                'status': self.status,
+                'hours_worked': self.hours_worked,
+                'notes': self.notes,
+                'verification_method': self.verification_method,
+                'updated_at': datetime.now().isoformat()
+            }
             
-        attendance_ref.set(attendance_data, merge=True)
-        return self
+            if not self.id:
+                # Create new attendance record
+                attendance_data['created_at'] = datetime.now().isoformat()
+                attendance_ref = db.collection('attendance').document()
+                self.id = attendance_ref.id
+            else:
+                # Update existing attendance record
+                attendance_ref = db.collection('attendance').document(self.id)
+            
+            attendance_ref.set(attendance_data, merge=True)
+            return True
+        except Exception as e:
+            print(f"Error saving attendance: {str(e)}")
+            return False
 
     def delete(self):
         """Delete attendance record"""
@@ -86,6 +93,64 @@ class Attendance(BaseModel):
             'status': self.status,
             'hours_worked': self.hours_worked,
             'notes': self.notes,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        } 
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
+            'verification_method': self.verification_method
+        }
+
+    @staticmethod
+    def find_by_event_and_volunteer(event_id, volunteer_id):
+        try:
+            docs = db.collection('attendance').where('event_id', '==', event_id).where('volunteer_id', '==', volunteer_id).get()
+            if docs:
+                doc = docs[0]
+                data = doc.to_dict()
+                return Attendance(
+                    id=doc.id,
+                    event_id=data.get('event_id'),
+                    volunteer_id=data.get('volunteer_id'),
+                    status=data.get('status'),
+                    verification_method=data.get('verification_method')
+                )
+            return None
+        except Exception as e:
+            print(f"Error finding attendance: {str(e)}")
+            return None
+
+    @staticmethod
+    def find_by_event(event_id):
+        try:
+            docs = db.collection('attendance').where('event_id', '==', event_id).get()
+            attendances = []
+            for doc in docs:
+                data = doc.to_dict()
+                attendances.append(Attendance(
+                    id=doc.id,
+                    event_id=data.get('event_id'),
+                    volunteer_id=data.get('volunteer_id'),
+                    status=data.get('status'),
+                    verification_method=data.get('verification_method')
+                ))
+            return attendances
+        except Exception as e:
+            print(f"Error finding attendances by event: {str(e)}")
+            return []
+
+    @staticmethod
+    def find_by_volunteer(volunteer_id):
+        try:
+            docs = db.collection('attendance').where('volunteer_id', '==', volunteer_id).get()
+            attendances = []
+            for doc in docs:
+                data = doc.to_dict()
+                attendances.append(Attendance(
+                    id=doc.id,
+                    event_id=data.get('event_id'),
+                    volunteer_id=data.get('volunteer_id'),
+                    status=data.get('status'),
+                    verification_method=data.get('verification_method')
+                ))
+            return attendances
+        except Exception as e:
+            print(f"Error finding attendances by volunteer: {str(e)}")
+            return [] 

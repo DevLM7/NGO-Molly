@@ -19,42 +19,33 @@ const EventDetails = ({ user }) => {
   const [isNGO, setIsNGO] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showCommentModal, setShowCommentModal] = useState(false);
+  const [showFaceAttendance, setShowFaceAttendance] = useState(false);
   
-  // Fetch event details
-  useEffect(() => {
-    const fetchEvent = async () => {
+  const fetchEventDetails = async () => {
+    try {
       setLoading(true);
-      setError(null);
-      
-      try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL}/api/events/${eventId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Event not found');
-        }
-        
-        const data = await response.json();
-        setEvent(data);
-        
-        // Check if user is registered for this event
-        setIsRegistered(data.registeredVolunteers?.includes(user.uid));
-        
-        // Check if user is the NGO that created this event
-        setIsNGO(data.createdBy === user.uid);
-      } catch (error) {
-        console.error('Error fetching event:', error);
-        setError('Could not load event details. Please try again later.');
-      } finally {
-        setLoading(false);
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/events/${eventId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch event details');
       }
-    };
-    
-    fetchEvent();
-  }, [eventId, user.uid]);
+      const data = await response.json();
+      setEvent(data);
+      
+      // Check if user is registered for this event
+      setIsRegistered(data.registeredVolunteers?.includes(user.uid));
+      
+      // Check if user is the NGO that created this event
+      setIsNGO(data.createdBy === user.uid);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
+    fetchEventDetails();
+  }, [eventId]);
   
   // Fetch attendance status if registered
   useEffect(() => {
@@ -201,9 +192,10 @@ const EventDetails = ({ user }) => {
   };
   
   // Handle attendance marked callback
-  const handleAttendanceMarked = (attendanceData) => {
-    setAttendance(attendanceData);
-    setAttendanceMode(false);
+  const handleAttendanceMarked = () => {
+    setShowFaceAttendance(false);
+    // Refresh event details to show updated attendance
+    fetchEventDetails();
   };
   
   // Handle photo uploaded callback
@@ -426,7 +418,7 @@ const EventDetails = ({ user }) => {
                   <>
                     {isEventToday() && attendance?.status !== 'attended' && (
                       <button
-                        onClick={() => setAttendanceMode(true)}
+                        onClick={() => setShowFaceAttendance(true)}
                         className="btn-primary"
                       >
                         Mark Attendance
@@ -478,7 +470,7 @@ const EventDetails = ({ user }) => {
       </div>
       
       {/* Attendance Mode */}
-      {attendanceMode && (
+      {showFaceAttendance && (
         <div className="mb-8">
           <FaceAttendance
             eventId={eventId}

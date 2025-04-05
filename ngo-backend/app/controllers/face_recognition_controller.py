@@ -4,145 +4,90 @@ import numpy as np
 import json
 import uuid
 from datetime import datetime
+from app.models.user import User
 
-def save_face_descriptor(user_id, descriptor):
-    """Save face descriptor for a user"""
+def save_face_descriptor(user_id, face_descriptor):
     try:
-        # Convert descriptor to list if it's a string
-        if isinstance(descriptor, str):
-            descriptor = json.loads(descriptor)
+        user = User.find_by_id(user_id)
+        if not user:
+            raise ValueError('User not found')
+            
+        user.face_descriptor = face_descriptor
+        user.save()
         
-        # Save descriptor to Firestore
-        db.collection('face_descriptors').document(user_id).set({
-            'descriptor': descriptor,
-            'updated_at': datetime.now().isoformat()
-        })
-        
-        return {'message': 'Face descriptor saved successfully'}, 201
+        return True
     except Exception as e:
-        return {'error': str(e)}, 500
+        print(f"Error saving face descriptor: {str(e)}")
+        raise
 
-def match_face(descriptor, event_id):
-    """Match face descriptor with stored descriptors"""
+def verify_face_descriptor(stored_descriptor, live_descriptor):
     try:
-        # Convert descriptor to list if it's a string
-        if isinstance(descriptor, str):
-            descriptor = json.loads(descriptor)
+        if not stored_descriptor or not live_descriptor:
+            return False
+            
+        # Convert descriptors to numpy arrays
+        stored = np.array(stored_descriptor)
+        live = np.array(live_descriptor)
         
-        # Get all face descriptors
-        descriptors_ref = db.collection('face_descriptors').get()
+        # Calculate Euclidean distance
+        distance = np.linalg.norm(stored - live)
         
-        # Find the best match
+        # Define threshold for matching (adjust based on your requirements)
+        THRESHOLD = 0.6
+        
+        return distance <= THRESHOLD
+    except Exception as e:
+        print(f"Error verifying face descriptor: {str(e)}")
+        return False
+
+def match_face(face_descriptor):
+    try:
+        # Get all users with face descriptors
+        users = User.find_all_with_face_descriptors()
+        
         best_match = None
         best_distance = float('inf')
         
-        for doc in descriptors_ref:
-            stored_descriptor = doc.to_dict().get('descriptor')
-            if not stored_descriptor:
+        for user in users:
+            if not user.face_descriptor:
                 continue
                 
-            # Calculate Euclidean distance
-            distance = calculate_euclidean_distance(descriptor, stored_descriptor)
+            # Calculate distance between descriptors
+            distance = np.linalg.norm(
+                np.array(user.face_descriptor) - np.array(face_descriptor)
+            )
             
             if distance < best_distance:
                 best_distance = distance
-                best_match = doc.id
-        
-        # Check if the match is good enough (threshold can be adjusted)
-        if best_distance < 0.6 and best_match:
-            # Check if user is registered for the event
-            event = db.collection('events').document(event_id).get()
-            if not event.exists:
-                return {'error': 'Event not found'}, 404
+                best_match = user
                 
-            event_data = event.to_dict()
-            registered_volunteers = event_data.get('registered_volunteers', [])
-            
-            if best_match in registered_volunteers:
-                return {
-                    'user_id': best_match,
-                    'distance': best_distance,
-                    'match_found': True
-                }, 200
-            else:
-                return {
-                    'user_id': best_match,
-                    'distance': best_distance,
-                    'match_found': True,
-                    'not_registered': True
-                }, 200
-        else:
-            return {
-                'match_found': False,
-                'message': 'No matching face found'
-            }, 200
-            
+        # Define threshold for matching
+        THRESHOLD = 0.6
+        
+        if best_distance <= THRESHOLD:
+            return best_match
+        return None
     except Exception as e:
-        return {'error': str(e)}, 500
+        print(f"Error matching face: {str(e)}")
+        return None
 
-def calculate_euclidean_distance(descriptor1, descriptor2):
-    """Calculate Euclidean distance between two face descriptors"""
+def mark_attendance(event_id, user_id):
     try:
-        # Convert to numpy arrays
-        arr1 = np.array(descriptor1)
-        arr2 = np.array(descriptor2)
-        
-        # Calculate Euclidean distance
-        distance = np.linalg.norm(arr1 - arr2)
-        
-        return distance
-    except Exception as e:
-        print(f"Error calculating distance: {e}")
-        return float('inf')
-
-def mark_attendance(user_id, event_id):
-    """Mark attendance for a user at an event"""
-    try:
-        # Check if event exists
-        event = db.collection('events').document(event_id).get()
-        if not event.exists:
-            return {'error': 'Event not found'}, 404
-            
-        # Check if user is registered for the event
-        event_data = event.to_dict()
-        registered_volunteers = event_data.get('registered_volunteers', [])
-        
-        if user_id not in registered_volunteers:
-            return {'error': 'User not registered for this event'}, 400
-            
         # Check if attendance already exists
-        attendance_ref = db.collection('attendance').where('user_id', '==', user_id).where('event_id', '==', event_id).get()
+        existing = Attendance.find_by_event_and_volunteer(event_id, user_id)
+        if existing:
+            return existing
+            
+        # Create new attendance record
+        attendance = Attendance(
+            event_id=event_id,
+            volunteer_id=user_id,
+            status='attended',
+            verification_method='face_recognition'
+        )
+        attendance.save()
         
-        if attendance_ref:
-            # Update existing attendance
-            attendance_id = attendance_ref[0].id
-            db.collection('attendance').document(attendance_id).update({
-                'check_in': datetime.now().isoformat(),
-                'status': 'present',
-                'updated_at': datetime.now().isoformat()
-            })
-            
-            return {
-                'attendance_id': attendance_id,
-                'message': 'Attendance updated successfully'
-            }, 200
-        else:
-            # Create new attendance record
-            attendance_id = str(uuid.uuid4())
-            db.collection('attendance').document(attendance_id).set({
-                'id': attendance_id,
-                'user_id': user_id,
-                'event_id': event_id,
-                'check_in': datetime.now().isoformat(),
-                'status': 'present',
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
-            })
-            
-            return {
-                'attendance_id': attendance_id,
-                'message': 'Attendance marked successfully'
-            }, 201
-            
+        return attendance
     except Exception as e:
-        return {'error': str(e)}, 500 
+        print(f"Error marking attendance: {str(e)}")
+        raise 
